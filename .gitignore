@@ -1,0 +1,26 @@
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+.derived-data-log-*
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+
+# Editors
+*.swp
+
+.build/
+DerivedData/
+*.xcresult
+*.xcuserstate
+xcuserdata/
+.DS_Store
+.build-device/
