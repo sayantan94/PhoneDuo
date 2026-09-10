@@ -1,6 +1,6 @@
 //
 //  DuoFold.metal
-//  DuoLikeAnimation
+//  PhoneDuo
 //
 //  Frosted-glass "fold" effect.
 //

@@ -2,9 +2,6 @@
 
 A motion-driven iPhone app that makes its interface look like a folding pane of glass. Hold the phone comfortably, then rotate it gently left and right: perspective, progressive blur, and shading respond to the phone’s actual orientation.
 
-Built from [Elijah Semyonov’s DuoLikeAnimation](https://github.com/elijah-semyonov/DuoLikeAnimation), with its MIT license preserved. PhoneDuo adds its own interface, Silk/Frost/Clear finishes, pause/resume, motion lifecycle handling, calibration safeguards, angle bounds, accessibility labels, and automated tests.
-
-
 <p align="center">
   <img src="Docs/left.png" width="30%" alt="PhoneDuo tilted left" />
   <img src="Docs/neutral.png" width="30%" alt="PhoneDuo at its neutral angle" />
@@ -93,6 +90,6 @@ A free personal team may be sufficient for local development; distribution/TestF
 
 Content inside the effect must be compatible with SwiftUI’s shader layer. The subtree is flattened before shading; UIKit-backed controls and scrolling containers should remain outside that layer.
 
-## Attribution
+## License
 
-The original motion model, fold modifier, Metal shader, and Xcode scaffold come from **DuoLikeAnimation**, copyright © 2026 Elijah Semyonov, under the MIT license. The original copyright and permission notice are in [LICENSE](LICENSE). Source snapshot: see [NOTICE.md](NOTICE.md).
+Licensed under the [MIT License](LICENSE).

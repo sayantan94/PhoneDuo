@@ -2,8 +2,6 @@
 //  PhoneDuoApp.swift
 //  PhoneDuo
 //
-//  Created by Elijah Semyonov on 10/09/2026.
-//
 
 import SwiftUI
 
