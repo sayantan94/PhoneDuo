@@ -8,7 +8,7 @@ A motion-driven iPhone app that makes its interface look like a folding pane of 
   <img src="Docs/right.png" width="30%" alt="PhoneDuo tilted right" />
 </p>
 
-[Build and test results](Docs/VALIDATION.md) · Physical tilt testing on an iPhone is pending.
+[Build and test results](Docs/VALIDATION.md) · Installed on iPhone 12 Pro Max; physical motion tuning is ongoing.
 
 ## What it does
 
@@ -60,7 +60,7 @@ Repeat with `TILT_DEGREES=0` or `25`. These are synthetic tilt inputs to the rea
 ./scripts/build-device.sh  # unsigned iPhone compile check
 ```
 
-The unit suite checks neutral calibration, symmetric left/right rotation, rejection of cross-axis motion, gyro prediction, and invalid/extreme angle bounds. UI tests interact with the angle slider, reset, pause/resume, controls panel, and finish picker. Simulator screenshots verify the actual rendered shader output.
+The 10-test unit suite checks neutral calibration, symmetric left/right rotation, rejection of cross-axis motion, bounded gyro prediction, neutral jitter, refresh-rate-independent smoothing, invalid/extreme angles, and shader sampling bounds. UI tests interact with the angle slider, reset, pause/resume, controls panel, and finish picker. Simulator screenshots verify the actual rendered shader output.
 
 Automated checks cannot establish physical sensor latency, sign/orientation on every device, battery consumption, or how convincing the illusion feels in your hand.
 
@@ -69,11 +69,19 @@ Automated checks cannot establish physical sensor latency, sign/orientation on e
 1. Open `PhoneDuo.xcodeproj` in Xcode.
 2. Select the PhoneDuo target → **Signing & Capabilities** → choose your own team. No developer team or provisioning profile is committed.
 3. If needed, change `app.phoneduo.PhoneDuo` to a bundle identifier available to your team.
-4. Connect and trust your iPhone, enable Developer Mode when iOS requests it, then select the device in Xcode and Run.
+4. Connect and trust your iPhone, enable Developer Mode when iOS requests it, then select the device in Xcode. For responsiveness testing, use **Product → Scheme → Edit Scheme → Run → Build Configuration → Release**, then Run.
 5. Hold the phone in portrait, look straight at it, and let the first reading calibrate. Turn gently around the vertical axis, roughly keeping your head in place.
 6. Check both directions, recalibration, pause/resume, app backgrounding, rotation to landscape, and Reduce Motion.
 
 A free personal team may be sufficient for local development; distribution/TestFlight requires the appropriate Apple developer setup. No device deployment or App Store upload is performed by the scripts.
+
+## Rendering and responsiveness
+
+Motion is sampled at 120 Hz and the latest reading is consumed by a display link targeting 60 Hz. This avoids a backlog of sensor callbacks on the UI thread. A time-based filter, bounded prediction, and a continuous 0.2° neutral zone reduce overshoot and hinge jitter.
+
+The shader uses a fixed 24-tap precomputed blur disk plus a center sample, capped at 14 points. Sampling bounds cover perspective displacement and blur. The controls use a simple background and observe angle changes only in the readout. Use a Release build when evaluating performance on a phone.
+
+For repeatable rendering checks, launch with `--performance-sweep` to animate a ±30° preview. Relaunch without the argument to return to normal sensor input. This exercises rendering; it does not validate sensor response.
 
 ## Source map
 

@@ -14,19 +14,9 @@ struct ContentView: View {
         if style == "Clear" { result.blurSpread = 0; result.darkening = 0 }
         return result
     }
-    private var angle: Double { paused || reduceMotion ? 0 : motion.tiltAngle }
 
     var body: some View {
-        GeometryReader { proxy in
-            let insets = proxy.safeAreaInsets
-            DemoContentView()
-                .safeAreaPadding(insets)
-                .frame(width: proxy.size.width + insets.leading + insets.trailing,
-                       height: proxy.size.height + insets.top + insets.bottom)
-                .clipped()
-                .foldEffect(angle: angle, parameters: parameters)
-                .ignoresSafeArea()
-        }
+        FoldSurface(motion: motion, isFlat: paused || reduceMotion, parameters: parameters)
         .background(.black)
         .overlay(alignment: .bottom) { controls }
         .onAppear {
@@ -77,7 +67,7 @@ struct ContentView: View {
                 }.accessibilityLabel(showsControls ? "Close controls" : "Open controls")
                     .accessibilityIdentifier("toggleControls")
             }.buttonStyle(.plain).padding(.horizontal, 18).padding(.vertical, 9)
-                .background(.regularMaterial, in: Capsule())
+                .background(Color.white.opacity(0.96), in: Capsule())
         }.padding(.horizontal, 20).padding(.bottom, 8)
     }
 
@@ -86,8 +76,7 @@ struct ContentView: View {
             HStack {
                 Text("Make it move.").font(.headline)
                 Spacer()
-                Text("\(angle * 180 / .pi, specifier: "%.1f")°").font(.system(.subheadline, design: .monospaced))
-                    .accessibilityIdentifier("tiltReadout")
+                TiltReadout(motion: motion, isFlat: paused || reduceMotion)
             }
             Picker("Finish", selection: $style) {
                 ForEach(["Silk", "Frost", "Clear"], id: \.self) { Text($0) }
@@ -120,8 +109,39 @@ struct ContentView: View {
                 Text(error).font(.caption).foregroundStyle(.red)
                 Button("Retry motion") { resumeMotion() }
             }
-        }.padding(20).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
+        }.padding(20).background(Color.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 24))
     }
 }
 
 #Preview { ContentView() }
+
+// Only the surface and numeric readout observe per-frame angle changes. The controls
+// and their layout do not need to be rebuilt for every sensor sample.
+private struct FoldSurface: View {
+    let motion: FoldMotionModel
+    let isFlat: Bool
+    let parameters: FoldParameters
+
+    var body: some View {
+        GeometryReader { proxy in
+            let insets = proxy.safeAreaInsets
+            DemoContentView()
+                .safeAreaPadding(insets)
+                .frame(width: proxy.size.width + insets.leading + insets.trailing,
+                       height: proxy.size.height + insets.top + insets.bottom)
+                .clipped()
+                .foldEffect(angle: isFlat ? 0 : motion.tiltAngle, parameters: parameters)
+                .ignoresSafeArea()
+        }
+    }
+}
+
+private struct TiltReadout: View {
+    let motion: FoldMotionModel
+    let isFlat: Bool
+    var body: some View {
+        Text("\((isFlat ? 0 : motion.tiltAngle) * 180 / .pi, specifier: "%.1f")°")
+            .font(.system(.subheadline, design: .monospaced))
+            .accessibilityIdentifier("tiltReadout")
+    }
+}

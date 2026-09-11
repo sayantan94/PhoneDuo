@@ -18,6 +18,7 @@ struct FoldParameters: Equatable {
     var blurSpread: CGFloat = 0.12
     /// Fraction of light lost per point of blur radius, so the frostier the glass, the darker it gets.
     var darkening: CGFloat = 0.015
+    var maxBlurRadius: CGFloat = 14
 
     var eyeDistancePoints: CGFloat { eyeDistanceMillimeters * pointsPerMillimeter }
 }
@@ -36,22 +37,37 @@ private struct FoldEffectModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         let eyeDistance = parameters.eyeDistancePoints
+        let sine = sin(abs(angle))
+        let cosine = cos(abs(angle))
+        let maxAngle = FoldMath.limitDegrees * .pi / 180
         // Flatten the subtree first; otherwise SwiftUI shades every leaf view on its own
         // transparent layer and the shader never sees the composited interface.
         return content
             .compositingGroup()
-            .visualEffect { [angle, parameters, eyeDistance] content, _ in
+            .visualEffect { [angle, parameters, eyeDistance, sine, cosine, maxAngle] content, proxy in
                 content.layerEffect(
                     ShaderLibrary.duoFold(
                         .boundingRect,
                         .float(angle),
+                        .float2(sine, cosine),
                         .float(eyeDistance),
                         .float(parameters.blurSpread),
-                        .float(parameters.darkening)
+                        .float(parameters.darkening),
+                        .float(parameters.maxBlurRadius)
                     ),
-                    maxSampleOffset: .zero,
-                    isEnabled: abs(angle) > 1e-4
+                    maxSampleOffset: FoldSampling.maximumOffset(size: proxy.size, eyeDistance: eyeDistance,
+                                                              maxAngle: maxAngle, radius: parameters.maxBlurRadius)
                 )
             }
+    }
+}
+
+/// Stable bounds cover every permitted angle without resizing the sampling region each frame.
+enum FoldSampling {
+    nonisolated static func maximumOffset(size: CGSize, eyeDistance: CGFloat, maxAngle: Double, radius: CGFloat) -> CGSize {
+        let gap = size.width * sin(maxAngle)
+        let scale = eyeDistance / max(1, eyeDistance - gap)
+        return CGSize(width: ceil(size.width * (1 - cos(maxAngle)) * scale + size.width * 0.5 * (scale - 1) + radius),
+                      height: ceil(size.height * 0.5 * (scale - 1) + radius))
     }
 }

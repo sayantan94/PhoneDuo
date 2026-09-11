@@ -24,6 +24,12 @@ final class FoldMotionModel {
     private(set) var motionTilt: Double = 0
     private(set) var errorMessage: String?
     @ObservationIgnored private var lastOrientation: UIInterfaceOrientation?
+    @ObservationIgnored private var displayLink: CADisplayLink?
+    @ObservationIgnored private var previousFrameTime: CFTimeInterval?
+    @ObservationIgnored private var lastSampleTime: TimeInterval?
+    @ObservationIgnored private var startedAt: CFTimeInterval = 0
+    // Explicit QA launch option; normal launches always use the real sensor on iPhone.
+    @ObservationIgnored private let performanceSweep = ProcessInfo.processInfo.arguments.contains("--performance-sweep")
 
     @ObservationIgnored private let motionManager = CMMotionManager()
     @ObservationIgnored private var reference: simd_double3x3?
@@ -40,28 +46,55 @@ final class FoldMotionModel {
         #if targetEnvironment(simulator)
         usesManualTilt = true
         #else
-        usesManualTilt = defaults.bool(forKey: "manualTilt") || !motionManager.isDeviceMotionAvailable
+        usesManualTilt = defaults.bool(forKey: "manualTilt") || !motionManager.isDeviceMotionAvailable || performanceSweep
         #endif
     }
 
     func start() {
-        guard isMotionAvailable, !usesManualTilt, !motionManager.isDeviceMotionActive else { return }
+        guard displayLink == nil, performanceSweep || (isMotionAvailable && !usesManualTilt) else { return }
         errorMessage = nil
-        // Gyro-only reference frame: the magnetometer-corrected variants trade latency for
-        // long-term yaw stability, and yaw is exactly the axis this effect tracks.
-        motionManager.deviceMotionUpdateInterval = 1.0 / 120.0
-        motionManager.startDeviceMotionUpdates(using: .xArbitraryZVertical, to: .main) { [weak self] motion, error in
-            if let error {
-                MainActor.assumeIsolated { self?.errorMessage = error.localizedDescription; self?.stop() }
-                return
-            }
-            guard let motion else { return }
-            MainActor.assumeIsolated { self?.process(motion) }
+        previousFrameTime = nil
+        lastSampleTime = nil
+        startedAt = CACurrentMediaTime()
+        if performanceSweep {
+            usesManualTilt = true
+        } else {
+            // Pull the latest sample at display time. Never queue obsolete sensor callbacks
+            // on the UI thread when a frame takes longer than the sensor interval.
+            motionManager.deviceMotionUpdateInterval = 1.0 / 120.0
+            motionManager.startDeviceMotionUpdates(using: .xArbitraryZVertical)
         }
+        let link = CADisplayLink(target: MotionFrameTarget(model: self), selector: #selector(MotionFrameTarget.tick(_:)))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+        link.add(to: .main, forMode: .common)
+        displayLink = link
     }
 
     func stop() {
+        displayLink?.invalidate()
+        displayLink = nil
+        previousFrameTime = nil
         motionManager.stopDeviceMotionUpdates()
+    }
+
+    fileprivate func frame(_ link: CADisplayLink) {
+        let elapsed = link.timestamp - (previousFrameTime ?? (link.timestamp - 1.0 / 60.0))
+        previousFrameTime = link.timestamp
+        if performanceSweep {
+            manualDegrees = 30 * sin((link.timestamp - startedAt) * .pi / 2)
+            return
+        }
+        guard let motion = motionManager.deviceMotion,
+              motion.timestamp != lastSampleTime else {
+            if link.timestamp - startedAt > 3,
+               link.timestamp - (lastSampleTime ?? startedAt) > 3 {
+                errorMessage = "Motion updates stopped. Tap Retry motion."
+                stop()
+            }
+            return
+        }
+        lastSampleTime = motion.timestamp
+        process(motion, elapsed: elapsed)
     }
 
     /// Makes the current pose the zero-tilt pose: the plane the UI stays in.
@@ -70,7 +103,7 @@ final class FoldMotionModel {
         motionTilt = 0
     }
 
-    private func process(_ motion: CMDeviceMotion) {
+    private func process(_ motion: CMDeviceMotion, elapsed: TimeInterval) {
         let orientation = currentOrientation
         if let lastOrientation, lastOrientation != orientation { recalibrate() }
         lastOrientation = orientation
@@ -84,10 +117,10 @@ final class FoldMotionModel {
 
         // Current device axes expressed in the calibrated device frame.
         let relative = reference.transpose * deviceToReference
-        let (screenX, screenY) = screenAxesInDeviceSpace()
+        let (screenX, screenY) = screenAxesInDeviceSpace(orientation)
         let rate = SIMD3(motion.rotationRate.x, motion.rotationRate.y, motion.rotationRate.z)
         motionTilt = FoldMath.filteredTilt(relative: relative, screenX: screenX, screenY: screenY,
-                                           rotationRate: rate, previous: motionTilt)
+                                           rotationRate: rate, previous: motionTilt, elapsed: elapsed)
     }
 
     /// Rotation taking device-frame vectors to reference-frame vectors (column-vector convention).
@@ -119,12 +152,19 @@ final class FoldMotionModel {
     }
 
     /// Screen-space X (right) and Y (up) axes of the interface, in device coordinates.
-    private func screenAxesInDeviceSpace() -> (x: SIMD3<Double>, y: SIMD3<Double>) {
-        switch currentOrientation {
+    private func screenAxesInDeviceSpace(_ orientation: UIInterfaceOrientation) -> (x: SIMD3<Double>, y: SIMD3<Double>) {
+        switch orientation {
         case .landscapeLeft:        return (SIMD3(0, 1, 0), SIMD3(-1, 0, 0))
         case .landscapeRight:       return (SIMD3(0, -1, 0), SIMD3(1, 0, 0))
         case .portraitUpsideDown:   return (SIMD3(-1, 0, 0), SIMD3(0, -1, 0))
         default:                    return (SIMD3(1, 0, 0), SIMD3(0, 1, 0))
         }
     }
+}
+
+/// CADisplayLink retains its target; the weak model reference avoids a retain cycle.
+@MainActor private final class MotionFrameTarget: NSObject {
+    weak var model: FoldMotionModel?
+    init(model: FoldMotionModel) { self.model = model }
+    @objc func tick(_ link: CADisplayLink) { model?.frame(link) }
 }
